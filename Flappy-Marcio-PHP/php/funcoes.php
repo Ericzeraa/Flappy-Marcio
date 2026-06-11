@@ -227,6 +227,19 @@ function skin_valida(string $skin): string
     return array_key_exists($skin, skins_jogo()) ? $skin : 'classica';
 }
 
+
+function h(mixed $valor): string
+{
+    return htmlspecialchars((string) $valor, ENT_QUOTES, 'UTF-8');
+}
+
+function asset_v(string $caminho): string
+{
+    $arquivo = dirname(__DIR__) . '/' . ltrim($caminho, '/');
+    $versao = is_file($arquivo) ? filemtime($arquivo) : time();
+    return $caminho . '?v=' . $versao;
+}
+
 function nivel_jogador(int $xp): array
 {
     $nivel = max(1, intdiv(max(0, $xp), 100) + 1);
@@ -375,6 +388,23 @@ function posicao_jogador(int $jogadorId, string $dificuldade = 'geral'): ?int
         $posicao++;
     }
     return null;
+}
+
+function conquistas_catalogo(): array
+{
+    return [
+        ['codigo' => 'primeiro_voo', 'titulo' => 'Primeiro voo', 'descricao' => 'Jogou a primeira partida'],
+        ['codigo' => 'fase_3', 'titulo' => 'Pegou ritmo', 'descricao' => 'Chegou na fase 3'],
+        ['codigo' => 'fase_5', 'titulo' => 'Piloto avançado', 'descricao' => 'Chegou na fase 5'],
+        ['codigo' => 'dez_pontos', 'titulo' => 'Dezena feita', 'descricao' => 'Fez pelo menos 10 pontos'],
+        ['codigo' => 'vinte_pontos', 'titulo' => 'Lenda dos canos', 'descricao' => 'Fez pelo menos 20 pontos'],
+        ['codigo' => 'um_minuto', 'titulo' => 'Fôlego de sobra', 'descricao' => 'Sobreviveu por 60 segundos'],
+        ['codigo' => 'modo_insano', 'titulo' => 'Coragem pura', 'descricao' => 'Jogou no modo insano'],
+        ['codigo' => 'podio', 'titulo' => 'Entrou no pódio', 'descricao' => 'Ficou entre os três melhores'],
+        ['codigo' => 'skin_azul', 'titulo' => 'Skin Azul liberada', 'descricao' => 'Fez 8 pontos e liberou uma nova skin'],
+        ['codigo' => 'skin_dourada', 'titulo' => 'Skin Dourada liberada', 'descricao' => 'Chegou na fase 4'],
+        ['codigo' => 'skin_neon', 'titulo' => 'Skin Neon liberada', 'descricao' => 'Jogou partidas suficientes para liberar o visual neon']
+    ];
 }
 
 function liberar_conquistas(int $jogadorId, int $pontos, int $fase, float $duracao, string $dificuldade, ?int $posicao): array

@@ -1,6 +1,7 @@
 const canvas = document.getElementById('jogo');
 const ctx = canvas.getContext('2d');
 const painelJogo = document.getElementById('painelJogo');
+const areaPerfil = document.getElementById('areaPerfil');
 const formLoginJogador = document.getElementById('formLoginJogador');
 const formCadastroJogador = document.getElementById('formCadastroJogador');
 const usuarioLogin = document.getElementById('usuarioLogin');
@@ -8,6 +9,8 @@ const senhaLogin = document.getElementById('senhaLogin');
 const usuarioCadastro = document.getElementById('usuarioCadastro');
 const senhaCadastro = document.getElementById('senhaCadastro');
 const btnSairJogador = document.getElementById('btnSairJogador');
+const btnAlternarPerfil = document.getElementById('btnAlternarPerfil');
+const perfilMinimoNome = document.getElementById('perfilMinimoNome');
 const abasAcesso = document.getElementById('abasAcesso');
 const mensagemNome = document.getElementById('mensagemNome');
 const nomeAtual = document.getElementById('nomeAtual');
@@ -35,6 +38,8 @@ const manualCard = document.getElementById('manualCard');
 const manualIcone = document.getElementById('manualIcone');
 const dicaFlutuante = document.querySelector('.dica-flutuante');
 const conquistasJogador = document.getElementById('conquistasJogador');
+const conquistasGrade = document.getElementById('conquistasGrade');
+const statusConquistas = document.getElementById('statusConquistas');
 const resumoFinal = document.getElementById('resumoFinal');
 
 const config = Object.assign({
@@ -55,13 +60,15 @@ const dificuldades = window.DIFICULDADES_JOGO || {
     insano: { nome: 'Insano', vel: 1.23, abertura: -30, max: 0.65 }
 };
 
-
 const skins = window.SKINS_JOGO || {
     classica: { nome: 'Clássica', pontos: 0, fase: 1, partidas: 0 },
     azul: { nome: 'Azul', pontos: 8, fase: 1, partidas: 0 },
     dourada: { nome: 'Dourada', pontos: 0, fase: 4, partidas: 0 },
     neon: { nome: 'Neon', pontos: 0, fase: 1, partidas: 8 }
 };
+
+const conquistasCatalogo = window.CONQUISTAS_CATALOGO || [];
+let conquistasLiberadas = new Set();
 
 const filtrosSkin = {
     classica: 'none',
@@ -101,6 +108,8 @@ let jogador = '';
 let jogadorLogado = false;
 let dificuldade = localStorage.getItem('flappy_marcio_dificuldade') || 'normal';
 let skinSelecionada = localStorage.getItem('flappy_marcio_skin') || 'classica';
+let perfilRecolhido = localStorage.getItem('flappy_marcio_perfil_retraido');
+perfilRecolhido = perfilRecolhido === null ? true : perfilRecolhido === '1';
 let perfilAtual = null;
 let mensagemFinal = '';
 let avisoJogo = 'Pressione espaço para começar';
@@ -135,6 +144,19 @@ function skinDados() {
     return skins[skinSelecionada] || skins.classica;
 }
 
+function atualizarPerfilRecolhido() {
+    if (!areaPerfil || !btnAlternarPerfil) return;
+    areaPerfil.classList.toggle('retraido', perfilRecolhido);
+    btnAlternarPerfil.textContent = perfilRecolhido ? 'Abrir login' : 'Recolher';
+    btnAlternarPerfil.setAttribute('aria-expanded', perfilRecolhido ? 'false' : 'true');
+}
+
+function alternarPerfil() {
+    perfilRecolhido = !perfilRecolhido;
+    localStorage.setItem('flappy_marcio_perfil_retraido', perfilRecolhido ? '1' : '0');
+    atualizarPerfilRecolhido();
+}
+
 function skinLiberada(skin, perfil) {
     const dados = skins[skin] || skins.classica;
     if (skin === 'classica') return true;
@@ -142,6 +164,32 @@ function skinLiberada(skin, perfil) {
     return Number(perfil.melhor || 0) >= Number(dados.pontos || 0)
         && Number(perfil.fase || 1) >= Number(dados.fase || 1)
         && Number(perfil.partidas || 0) >= Number(dados.partidas || 0);
+}
+
+
+function atualizarPainelConquistas(lista = []) {
+    conquistasLiberadas = new Set((Array.isArray(lista) ? lista : []).map(item => item.codigo));
+    if (statusConquistas) statusConquistas.textContent = `${conquistasLiberadas.size}/${conquistasCatalogo.length}`;
+    if (!conquistasGrade) return;
+    conquistasGrade.querySelectorAll('.conquista-item').forEach(item => {
+        const liberada = conquistasLiberadas.has(item.dataset.conquista);
+        item.classList.toggle('bloqueada', !liberada);
+        item.classList.toggle('liberada', liberada);
+    });
+}
+
+function destacarConquistas(lista = []) {
+    if (!Array.isArray(lista) || !lista.length) return;
+    lista.forEach((item, indice) => {
+        setTimeout(() => {
+            const toast = document.createElement('div');
+            toast.className = 'toast-conquista';
+            toast.innerHTML = `<strong>Conquista desbloqueada</strong><span>${escaparTexto(item.titulo)}</span>`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.classList.add('saindo'), 2700);
+            setTimeout(() => toast.remove(), 3300);
+        }, indice * 360);
+    });
 }
 
 function atualizarSkins(perfil = perfilAtual) {
@@ -234,11 +282,13 @@ function definirJogador(dados) {
         jogador = '';
         jogadorLogado = false;
         nomeAtual.textContent = 'Visitante';
+        if (perfilMinimoNome) perfilMinimoNome.textContent = 'Visitante';
         statusJogador.textContent = 'Visitante';
         if (btnSairJogador) btnSairJogador.classList.add('escondido');
         if (abasAcesso) abasAcesso.classList.remove('conta-logada');
         preencherPerfil(null);
         atualizarResumoJogador(0, null, [], null);
+        atualizarPainelConquistas([]);
         atualizarDicaFlutuante();
         return;
     }
@@ -246,12 +296,14 @@ function definirJogador(dados) {
     jogador = ajustarNome(dados.jogador.nome || '');
     jogadorLogado = true;
     nomeAtual.textContent = jogador || 'Jogador';
+    if (perfilMinimoNome) perfilMinimoNome.textContent = jogador || 'Jogador';
     statusJogador.textContent = 'Logado';
     if (usuarioLogin) usuarioLogin.value = jogador;
     if (btnSairJogador) btnSairJogador.classList.remove('escondido');
     if (abasAcesso) abasAcesso.classList.add('conta-logada');
     mostrarMensagem('Conta ativa. Pressione espaço para começar.', true);
     atualizarResumoJogador(dados.recorde || (dados.perfil ? dados.perfil.melhor : 0), dados.posicao || null, dados.conquistas || [], dados.perfil || null);
+    atualizarPainelConquistas(dados.conquistas || []);
     if (dados.jogador.skin && skins[dados.jogador.skin]) {
         skinSelecionada = dados.jogador.skin;
         localStorage.setItem('flappy_marcio_skin', skinSelecionada);
@@ -286,6 +338,9 @@ async function carregarSessao() {
 function tentarComecar() {
     if (!jogadorLogado) {
         mostrarMensagem('Entre ou crie uma conta para jogar e salvar seu progresso.');
+        perfilRecolhido = false;
+        localStorage.setItem('flappy_marcio_perfil_retraido', '0');
+        atualizarPerfilRecolhido();
         if (usuarioLogin) usuarioLogin.focus();
         return;
     }
@@ -333,7 +388,9 @@ function deslocamentoCano(cano) {
 function pular() {
     if (estado !== 'jogando') return;
     passaro.velocidade = Number(config.pulo || -8.25);
-    criarParticulas(7, '#fff6a7', passaro.x + 8, passaro.y + passaro.altura / 2);
+    passaro.frame = (passaro.frame + 1) % imagens.passaro.length;
+    criarParticulas(10, '#fff6a7', passaro.x + 8, passaro.y + passaro.altura / 2);
+    brilhos.push({ x: passaro.x + 12, y: passaro.y + 31, r: 6, vida: 34 });
 }
 
 function alternarPausa() {
@@ -502,11 +559,22 @@ function desenhar() {
 }
 
 function desenharFundo() {
-    ctx.drawImage(imagens.fundo, 0, 0, largura, altura);
-    const grad = ctx.createLinearGradient(0, 0, 0, altura);
-    grad.addColorStop(0, faseDoJogo() >= 5 ? 'rgba(255,118,92,.18)' : 'rgba(255,230,109,.08)');
-    grad.addColorStop(1, faseDoJogo() >= 4 ? 'rgba(14,165,233,.16)' : 'rgba(255,255,255,.05)');
-    ctx.fillStyle = grad;
+    if (imagens.fundo.complete && imagens.fundo.naturalWidth > 0) {
+        ctx.drawImage(imagens.fundo, 0, 0, largura, altura);
+    } else {
+        const gradiente = ctx.createLinearGradient(0, 0, 0, altura);
+        gradiente.addColorStop(0, '#55c9d2');
+        gradiente.addColorStop(0.64, '#62dbe0');
+        gradiente.addColorStop(1, '#58df69');
+        ctx.fillStyle = gradiente;
+        ctx.fillRect(0, 0, largura, altura);
+    }
+
+    const luz = ctx.createLinearGradient(0, 0, largura, 0);
+    luz.addColorStop(0, 'rgba(255,255,255,.06)');
+    luz.addColorStop(0.5, 'rgba(255,255,255,0)');
+    luz.addColorStop(1, 'rgba(255,255,255,.08)');
+    ctx.fillStyle = luz;
     ctx.fillRect(0, 0, largura, altura);
 }
 
@@ -514,7 +582,7 @@ function desenharCenarioVivo() {
     ctx.save();
     brilhos.forEach(e => {
         ctx.globalAlpha = Math.min(0.75, e.vida / 90);
-        ctx.fillStyle = '#fff7ad';
+        ctx.fillStyle = '#fff7b8';
         ctx.beginPath();
         ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
         ctx.fill();
@@ -538,16 +606,27 @@ function desenharVelocidade() {
 }
 
 function desenharCanos() {
+    const solo = altura - chaoAltura + 18;
     canos.forEach(cano => {
         const ajuste = deslocamentoCano(cano);
-        const topo = cano.topo + ajuste;
-        const base = cano.base + ajuste;
+        const topo = Math.max(48, cano.topo + ajuste);
+        const base = Math.min(altura - chaoAltura - 36, cano.base + ajuste);
+        const alturaTopo = Math.max(140, topo + 24);
+        const alturaBase = Math.max(260, solo - base + 70);
         ctx.save();
         ctx.translate(cano.x + canoLargura / 2, topo);
         ctx.scale(1, -1);
-        ctx.drawImage(imagens.cano, -canoLargura / 2, 0, canoLargura, 430);
+        ctx.drawImage(imagens.cano, -canoLargura / 2, 0, canoLargura, alturaTopo);
         ctx.restore();
-        ctx.drawImage(imagens.cano, cano.x, base, canoLargura, 430);
+        ctx.drawImage(imagens.cano, cano.x, base, canoLargura, alturaBase);
+        ctx.save();
+        const brilho = ctx.createLinearGradient(cano.x, base, cano.x + canoLargura, solo);
+        brilho.addColorStop(0, 'rgba(255,255,255,.10)');
+        brilho.addColorStop(0.5, 'rgba(255,255,255,0)');
+        brilho.addColorStop(1, 'rgba(0,0,0,.14)');
+        ctx.fillStyle = brilho;
+        ctx.fillRect(cano.x + 5, base + 24, Math.max(8, canoLargura - 10), Math.max(0, solo - base));
+        ctx.restore();
     });
 }
 
@@ -601,9 +680,20 @@ function desenharParticulas() {
 
 function desenharPassaro() {
     const img = imagens.passaro[passaro.frame];
+    const centroX = passaro.x + passaro.largura / 2;
+    const centroY = passaro.y + passaro.altura / 2 + Math.sin(quadro / 8) * 2.2;
+    const pulso = 1 + Math.sin(quadro / 6) * 0.035;
     ctx.save();
-    ctx.translate(passaro.x + passaro.largura / 2, passaro.y + passaro.altura / 2);
+    ctx.globalAlpha = 0.26;
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.ellipse(centroX, centroY + 38, 28, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.translate(centroX, centroY);
     ctx.rotate(passaro.angulo * Math.PI / 180);
+    ctx.scale(pulso, pulso);
     if (skinSelecionada === 'dourada' || skinSelecionada === 'neon') {
         ctx.globalAlpha = skinSelecionada === 'neon' ? 0.44 : 0.28;
         ctx.fillStyle = skinSelecionada === 'neon' ? '#f0abfc' : '#fde68a';
@@ -615,8 +705,17 @@ function desenharPassaro() {
     ctx.filter = filtrosSkin[skinSelecionada] || 'none';
     ctx.drawImage(img, -passaro.largura / 2, -passaro.altura / 2, passaro.largura, passaro.altura);
     ctx.filter = 'none';
+    if (estado === 'jogando') {
+        ctx.globalAlpha = 0.28;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(-24, 4, 12 + Math.sin(quadro / 3) * 4, Math.PI * 0.2, Math.PI * 1.65);
+        ctx.stroke();
+    }
     ctx.restore();
 }
+
 
 function desenharEfeitosJogador() {
     if (!escudoAtivo) return;
@@ -807,6 +906,9 @@ async function salvarPontuacao() {
         const retorno = await resposta.json();
         if (!retorno.ok) throw new Error(retorno.mensagem || 'Falha ao salvar');
         atualizarResumoJogador(retorno.recorde, retorno.posicao, retorno.conquistas || [], retorno.perfil);
+        const todas = await fetch('php/ranking.php?acao=jogador').then(r => r.json()).catch(() => null);
+        if (todas && todas.ok) atualizarPainelConquistas(todas.conquistas || []);
+        destacarConquistas(retorno.conquistas || []);
         const destaques = [];
         if (retorno.melhorou) destaques.push('Novo recorde pessoal');
         if (retorno.podio) destaques.push('Entrou no pódio');
@@ -898,6 +1000,7 @@ function atualizarResumoJogador(recorde, posicao, conquistas = null, perfil = nu
     atualizarSkins(perfil);
     if (Array.isArray(conquistas) && conquistas.length) {
         conquistasJogador.innerHTML = conquistas.slice(0, 4).map(item => `<span>${escaparTexto(item.titulo)}</span>`).join('');
+        if (conquistas.some(item => item.codigo)) atualizarPainelConquistas(conquistas);
     }
 }
 
@@ -961,10 +1064,13 @@ function atualizarDicaFlutuante() {
 function prepararTela() {
     atualizarDificuldadeTela();
     atualizarSkins(null);
+    atualizarPerfilRecolhido();
     atualizarPlacarTela();
     atualizarDicaFlutuante();
 
     carregarSessao();
+
+    if (btnAlternarPerfil) btnAlternarPerfil.addEventListener('click', alternarPerfil);
 
     if (abasAcesso) {
         abasAcesso.querySelectorAll('button').forEach(botao => {
@@ -1020,6 +1126,7 @@ function prepararTela() {
             if (estado === 'inicio') desenhar();
         });
     });
+
 
     document.querySelectorAll('.filtros-ranking button').forEach(botao => {
         botao.addEventListener('click', () => {

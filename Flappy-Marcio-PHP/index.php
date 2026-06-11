@@ -5,17 +5,18 @@ $stats = estatisticas_gerais();
 $dificuldades = dificuldades_jogo();
 $missoes = missoes_do_dia();
 $skins = skins_jogo();
+$conquistasCatalogo = conquistas_catalogo();
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flappy Márcio</title>
-    <link rel="stylesheet" href="assets/css/estilo.css">
+    <title>Flappy Márcio 2</title>
+    <link rel="stylesheet" href="<?= asset_v('assets/css/estilo.css') ?>">
 </head>
 <body>
-    <div class="cenario-fundo">
+    <div class="fundo-decorativo">
         <span class="lua"></span>
         <span class="planeta planeta-1"></span>
         <span class="planeta planeta-2"></span>
@@ -31,13 +32,14 @@ $skins = skins_jogo();
     <main class="pagina">
         <nav class="menu-principal">
             <div>
-                <strong>Flappy Márcio</strong>
+                <strong>Flappy Márcio 2</strong>
                 <span>Jogo, ranking e desafios</span>
             </div>
             <button type="button" data-ir="jogo">Jogar</button>
             <button type="button" data-ir="ranking">Ranking</button>
             <button type="button" data-ir="perfil">Perfil</button>
             <button type="button" data-ir="manual">Manual</button>
+            <button type="button" data-ir="conquistas">Conquistas</button>
             <button type="button" data-ir="creditos">Créditos</button>
             <a href="admin.php">Admin</a>
         </nav>
@@ -46,18 +48,26 @@ $skins = skins_jogo();
                 <div class="logo">FM</div>
                 <div>
                     <span class="tag">Desafio dos Canos</span>
-                    <h1>Flappy Márcio</h1>
+                    <h1>Flappy Márcio 2</h1>
                     <p>Escolha o modo, domine os canos, desbloqueie visuais e tente ficar no topo do ranking.</p>
                 </div>
             </header>
 
             <section class="card card-jogador" id="areaPerfil">
-                <div class="titulo-card">
+                <div class="titulo-card titulo-card-acesso">
                     <div>
                         <span class="subtitulo">Jogador</span>
                         <h2>Perfil da partida</h2>
                     </div>
-                    <span class="status" id="statusJogador">Visitante</span>
+                    <div class="acoes-perfil">
+                        <span class="status" id="statusJogador">Visitante</span>
+                        <button class="btn-retrair-login" id="btnAlternarPerfil" type="button" aria-expanded="true">Recolher</button>
+                    </div>
+                </div>
+
+                <div class="perfil-minimo" id="perfilMinimo">
+                    <strong id="perfilMinimoNome">Visitante</strong>
+                    <span>Login recolhido para dar mais destaque ao jogo.</span>
                 </div>
 
                 <div class="abas-acesso" id="abasAcesso">
@@ -121,6 +131,7 @@ $skins = skins_jogo();
             </section>
 
 
+
             <section class="card skins-card" id="areaSkins">
                 <div class="titulo-card">
                     <div>
@@ -153,6 +164,24 @@ $skins = skins_jogo();
                         <div>
                             <strong><?= htmlspecialchars($missao['titulo']) ?></strong>
                             <span><?= htmlspecialchars($missao['descricao']) ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </section>
+
+            <section class="card conquistas-card" id="areaConquistas">
+                <div class="titulo-card">
+                    <div>
+                        <span class="subtitulo">Evolução</span>
+                        <h2>Conquistas</h2>
+                    </div>
+                    <span class="status" id="statusConquistas">0/<?= count($conquistasCatalogo) ?></span>
+                </div>
+                <div class="conquistas-grade" id="conquistasGrade">
+                    <?php foreach ($conquistasCatalogo as $conquista): ?>
+                        <div class="conquista-item bloqueada" data-conquista="<?= htmlspecialchars($conquista['codigo']) ?>">
+                            <strong><?= htmlspecialchars($conquista['titulo']) ?></strong>
+                            <span><?= htmlspecialchars($conquista['descricao']) ?></span>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -248,7 +277,8 @@ $skins = skins_jogo();
         window.DIFICULDADES_JOGO = <?= json_encode($dificuldades, JSON_UNESCAPED_UNICODE) ?>;
         window.MISSOES_DIA = <?= json_encode($missoes, JSON_UNESCAPED_UNICODE) ?>;
         window.SKINS_JOGO = <?= json_encode($skins, JSON_UNESCAPED_UNICODE) ?>;
+        window.CONQUISTAS_CATALOGO = <?= json_encode($conquistasCatalogo, JSON_UNESCAPED_UNICODE) ?>;
     </script>
-    <script src="assets/js/jogo.js"></script>
+    <script src="<?= asset_v('assets/js/jogo.js') ?>"></script>
 </body>
 </html>

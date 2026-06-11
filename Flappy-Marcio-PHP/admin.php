@@ -35,7 +35,7 @@ if (empty($_SESSION['admin_logado'])):
     <link rel="stylesheet" href="assets/css/estilo.css">
 </head>
 <body class="admin-body login-admin-body">
-    <div class="cenario-fundo"><span class="lua"></span><span class="planeta planeta-1"></span><span class="nuvem nuvem-1"></span><span class="brilho brilho-1"></span></div>
+    <div class="fundo-decorativo"><span class="lua"></span><span class="planeta planeta-1"></span><span class="nuvem nuvem-1"></span><span class="brilho brilho-1"></span></div>
     <main class="login-admin-page">
         <form class="login-admin-card" method="post">
             <input type="hidden" name="acao" value="login_admin">
@@ -154,7 +154,7 @@ try {
     <link rel="stylesheet" href="assets/css/estilo.css">
 </head>
 <body class="admin-body">
-    <div class="cenario-fundo"><span class="lua"></span><span class="planeta planeta-1"></span><span class="nuvem nuvem-1"></span><span class="brilho brilho-1"></span></div>
+    <div class="fundo-decorativo"><span class="lua"></span><span class="planeta planeta-1"></span><span class="nuvem nuvem-1"></span><span class="brilho brilho-1"></span></div>
     <main class="admin-page">
         <header class="admin-hero">
             <div>
