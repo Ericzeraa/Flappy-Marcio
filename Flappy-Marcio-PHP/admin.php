@@ -1,9 +1,11 @@
 <?php
 session_start();
 require_once __DIR__ . '/php/funcoes.php';
+\App\Base\Cabecalhos::segurancaBasica();
 
 $mensagem = '';
 $erro = '';
+$painelAdmin = new PainelAdmin();
 
 if (isset($_GET['sair'])) {
     unset($_SESSION['admin_logado']);
@@ -15,13 +17,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'login_a
     $usuario = trim($_POST['usuario'] ?? '');
     $senha = trim($_POST['senha'] ?? '');
 
-    if ($usuario === 'admin' && $senha === '1234') {
+    if (!validar_csrf($_POST['csrf_token'] ?? null)) {
+        $erro = 'Sessão expirada. Recarregue a página e tente novamente.';
+    } elseif ($painelAdmin->autenticar($usuario, $senha)) {
+        session_regenerate_id(true);
         $_SESSION['admin_logado'] = true;
         header('Location: admin.php');
         exit;
+    } else {
+        $erro = 'Usuário ou senha incorretos.';
     }
-
-    $erro = 'Usuário ou senha incorretos.';
 }
 
 if (empty($_SESSION['admin_logado'])):
@@ -31,7 +36,7 @@ if (empty($_SESSION['admin_logado'])):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Entrar no painel</title>
+    <title>Entrar</title>
     <link rel="stylesheet" href="assets/css/estilo.css">
 </head>
 <body class="admin-body login-admin-body">
@@ -39,13 +44,14 @@ if (empty($_SESSION['admin_logado'])):
     <main class="login-admin-page">
         <form class="login-admin-card" method="post">
             <input type="hidden" name="acao" value="login_admin">
+            <?= campo_csrf() ?>
             <span class="tag">Acesso restrito</span>
             <h1>Painel Flappy Márcio</h1>
-            <p>Usuário <strong>admin</strong> e senha <strong>1234</strong>.</p>
+            <p>Entre com o usuário do painel. Prometo que aqui não tem cano passando voando.</p>
             <?php if ($erro): ?><div class="alerta erro"><?= htmlspecialchars($erro) ?></div><?php endif; ?>
             <label><span>Usuário</span><input type="text" name="usuario" placeholder="admin" autocomplete="username" required></label>
-            <label><span>Senha</span><input type="password" name="senha" placeholder="1234" autocomplete="current-password" required></label>
-            <button class="btn-link cheio" type="submit">Entrar no painel</button>
+            <label><span>Senha</span><input type="password" name="senha" placeholder="Senha" autocomplete="current-password" required></label>
+            <button class="btn-link cheio" type="submit">Entrar</button>
             <a class="link-voltar" href="index.php">Voltar ao jogo</a>
         </form>
     </main>
@@ -64,7 +70,8 @@ if (!empty($_SESSION['admin_logado']) && isset($_GET['exportar'])) {
     header('Content-Disposition: attachment; filename="' . $arquivo . '"');
     $saida = fopen('php://output', 'w');
     fputcsv($saida, ['Flappy Márcio'], ';');
-    fputcsv($saida, ['Desenvolvedores', 'Eric, Vinicius e Jhonatan'], ';');
+    fputcsv($saida, ['Feito por', 'Eric, Vinicius e Jhonatan'], ';');
+    fputcsv($saida, ['Exportado em', date('d/m/Y H:i')], ';');
     fputcsv($saida, [], ';');
     if ($tipo === 'partidas') {
         fputcsv($saida, ['Jogador', 'Dificuldade', 'Pontos', 'Fase', 'Tempo', 'Velocidade', 'Data'], ';');
@@ -83,66 +90,46 @@ try {
     $pdo = pdo();
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        if (!validar_csrf($_POST['csrf_token'] ?? null)) {
+            throw new RuntimeException('Sessão expirada. Recarregue a página e tente novamente.');
+        }
+
         $acao = $_POST['acao'] ?? '';
 
         if ($acao === 'salvar_config') {
-            $permitidas = ['velocidade_inicial', 'aumento_fase', 'velocidade_maxima', 'pontos_por_fase', 'abertura_inicial', 'abertura_minima', 'gravidade', 'pulo'];
-            $stmt = $pdo->prepare('UPDATE configuracoes SET valor = ? WHERE chave = ?');
-            foreach ($permitidas as $chave) {
-                if (isset($_POST[$chave]) && is_numeric(str_replace(',', '.', $_POST[$chave]))) {
-                    $stmt->execute([str_replace(',', '.', $_POST[$chave]), $chave]);
-                }
-            }
-            $mensagem = 'Configurações salvas.';
+            $painelAdmin->salvarConfiguracoes($_POST);
+            $mensagem = 'Configurações salvas. Agora é testar para ver quem reclama primeiro.';
         }
 
         if ($acao === 'limpar_ranking') {
-            $pdo->exec('DELETE FROM missoes_concluidas');
-            $pdo->exec('DELETE FROM conquistas');
-            $pdo->exec('DELETE FROM pontuacoes');
-            $pdo->exec('DELETE FROM partidas');
-            $pdo->exec('DELETE FROM jogadores');
-            $mensagem = 'Ranking e histórico limpos.';
+            $painelAdmin->limparRanking();
+            $mensagem = 'Ranking e histórico limpos. Zerou tudo, até a vergonha das quedas.';
         }
 
         if ($acao === 'excluir_jogador') {
             $id = filter_input(INPUT_POST, 'jogador_id', FILTER_VALIDATE_INT);
             if ($id) {
-                $stmt = $pdo->prepare('DELETE FROM jogadores WHERE id = ?');
-                $stmt->execute([$id]);
-                $mensagem = 'Jogador removido.';
+                $painelAdmin->excluirJogador($id);
+                $mensagem = 'Jogador removido do jogo.';
             }
         }
     }
 
     $stats = estatisticas_gerais();
     $configs = configuracoes_jogo();
-    $ranking = $pdo->query('SELECT j.id, j.nome, p.dificuldade, p.pontos, p.fase, p.duracao_seg, p.velocidade_final, p.atualizado_em
-        FROM pontuacoes p
-        JOIN jogadores j ON j.id = p.jogador_id
-        ORDER BY p.pontos DESC, p.atualizado_em ASC
-        LIMIT 30')->fetchAll();
-    $partidas = $pdo->query('SELECT j.nome, p.dificuldade, p.pontos, p.fase, p.duracao_seg, p.velocidade_final, p.criado_em
-        FROM partidas p
-        JOIN jogadores j ON j.id = p.jogador_id
-        ORDER BY p.criado_em DESC
-        LIMIT 20')->fetchAll();
-    $conquistas = $pdo->query('SELECT j.nome, c.titulo, c.descricao, c.criado_em
-        FROM conquistas c
-        JOIN jogadores j ON j.id = c.jogador_id
-        ORDER BY c.criado_em DESC
-        LIMIT 20')->fetchAll();
-    $missoes = $pdo->query('SELECT j.nome, m.titulo, m.data_ref, m.criado_em
-        FROM missoes_concluidas m
-        JOIN jogadores j ON j.id = m.jogador_id
-        ORDER BY m.criado_em DESC
-        LIMIT 20')->fetchAll();
-    $porDificuldade = ranking_por_dificuldade();
+    $dadosPainel = $painelAdmin->dadosPainel();
+    $ranking = $dadosPainel['ranking'];
+    $partidas = $dadosPainel['partidas'];
+    $conquistas = $dadosPainel['conquistas'];
+    $missoes = $dadosPainel['missoes'];
+    $porDificuldade = $dadosPainel['porDificuldade'];
+    $indicadoresTecnicos = $dadosPainel['indicadoresTecnicos'] ?? [];
 } catch (Throwable $e) {
     $erro = $e->getMessage();
     $stats = estatisticas_gerais();
     $configs = configuracoes_jogo();
     $ranking = $partidas = $conquistas = $missoes = $porDificuldade = [];
+    $indicadoresTecnicos = [];
 }
 ?>
 <!DOCTYPE html>
@@ -159,8 +146,8 @@ try {
         <header class="admin-hero">
             <div>
                 <span class="tag">Painel do jogo</span>
-                <h1>Controle da partida</h1>
-                <p>Acompanhe ranking, histórico, missões, conquistas e ajuste a dificuldade sem mexer no código.</p>
+                <h1>Painel do jogo</h1>
+                <p>Aqui dá para ver o ranking, conferir as últimas partidas e ajustar a dificuldade sem ficar caçando arquivo no projeto.</p>
             </div>
             <div class="acoes-admin-topo"><a class="btn-link" href="index.php">Voltar ao jogo</a><a class="btn-link" href="admin.php?exportar=ranking">CSV ranking</a><a class="btn-link" href="admin.php?exportar=partidas">CSV partidas</a><a class="btn-link claro" href="admin.php?sair=1">Sair</a></div>
         </header>
@@ -169,12 +156,18 @@ try {
         <?php if ($erro): ?><div class="alerta erro"><?= htmlspecialchars($erro) ?></div><?php endif; ?>
 
         <section class="admin-stats">
-            <article><span>Partidas</span><strong><?= $stats['partidas'] ?></strong></article>
-            <article><span>Jogadores</span><strong><?= $stats['jogadores'] ?></strong></article>
-            <article><span>Maior pontuação</span><strong><?= $stats['maior'] ?></strong></article>
-            <article><span>Média</span><strong><?= $stats['media'] ?></strong></article>
-            <article><span>Fase máxima</span><strong><?= $stats['fase'] ?></strong></article>
+            <article><span>Partidas</span><strong><?= (int) $stats['partidas'] ?></strong></article>
+            <article><span>Hoje</span><strong><?= (int) ($stats['partidas_hoje'] ?? 0) ?></strong></article>
+            <article><span>Jogadores</span><strong><?= (int) $stats['jogadores'] ?></strong></article>
+            <article><span>Ativos na semana</span><strong><?= (int) ($stats['jogadores_ativos'] ?? 0) ?></strong></article>
+            <article><span>Maior ponto</span><strong><?= (int) $stats['maior'] ?></strong></article>
+            <article><span>Maior hoje</span><strong><?= (int) ($stats['maior_hoje'] ?? 0) ?></strong></article>
+            <article><span>Média</span><strong><?= number_format((float) $stats['media'], 1, ',', '.') ?></strong></article>
+            <article><span>Tempo médio</span><strong><?= number_format((float) ($stats['tempo_medio'] ?? 0), 1, ',', '.') ?>s</strong></article>
+            <article><span>Fase máxima</span><strong><?= (int) $stats['fase'] ?></strong></article>
             <article><span>Modo mais jogado</span><strong><?= htmlspecialchars($stats['dificuldade']) ?></strong></article>
+            <article><span>Melhor jogador</span><strong><?= htmlspecialchars($stats['campeao'] ?? 'Aguardando') ?></strong></article>
+            <article><span>Mais ativo</span><strong><?= htmlspecialchars($stats['mais_ativo'] ?? 'Aguardando') ?></strong></article>
         </section>
 
         <section class="admin-grid">
@@ -187,24 +180,36 @@ try {
                         <?php foreach ($ranking as $i => $item): ?>
                             <tr>
                                 <td><?= $i + 1 ?></td><td><?= htmlspecialchars($item['nome']) ?></td><td><?= htmlspecialchars($item['dificuldade']) ?></td><td><?= (int) $item['pontos'] ?></td><td><?= (int) $item['fase'] ?></td><td><?= number_format((float) $item['duracao_seg'], 1, ',', '.') ?>s</td><td><?= number_format((float) $item['velocidade_final'], 1, ',', '.') ?>x</td><td><?= data_br($item['atualizado_em']) ?></td>
-                                <td><form method="post" onsubmit="return confirm('Remover este jogador?')"><input type="hidden" name="acao" value="excluir_jogador"><input type="hidden" name="jogador_id" value="<?= (int) $item['id'] ?>"><button class="btn-mini" type="submit">Excluir</button></form></td>
+                                <td><form method="post" onsubmit="return confirm('Remover este jogador?')"><input type="hidden" name="acao" value="excluir_jogador"><?= campo_csrf() ?><input type="hidden" name="jogador_id" value="<?= (int) $item['id'] ?>"><button class="btn-mini" type="submit">Excluir</button></form></td>
                             </tr>
                         <?php endforeach; ?>
-                        <?php if (!$ranking): ?><tr><td colspan="9">Nenhuma pontuação registrada.</td></tr><?php endif; ?>
+                        <?php if (!$ranking): ?><tr><td colspan="9">Nenhuma pontuação salva ainda. O ranking está em paz por enquanto.</td></tr><?php endif; ?>
                         </tbody>
                     </table>
                 </div>
             </div>
 
+            <div class="admin-card">
+                <span class="subtitulo">Resumo do backend</span><h2>Indicadores do jogo</h2>
+                <div class="lista-admin">
+                    <div><strong>Ranking ativo</strong><span><?= (int) ($indicadoresTecnicos['totalRanking'] ?? 0) ?> jogadores no ranking</span></div>
+                    <div><strong>Histórico recente</strong><span><?= (int) ($indicadoresTecnicos['ultimasPartidas'] ?? 0) ?> partidas recentes</span></div>
+                    <div><strong>Modos utilizados</strong><span><?= (int) ($indicadoresTecnicos['modosUsados'] ?? 0) ?> modos já testados</span></div>
+                    <div><strong>Tempo médio</strong><span><?= number_format((float) ($indicadoresTecnicos['mediaTempo'] ?? 0), 1, ',', '.') ?>s por partida</span></div>
+                    <div><strong>Missões de hoje</strong><span><?= (int) ($indicadoresTecnicos['aproveitamentoMissoesHoje'] ?? 0) ?> missões concluídas</span></div>
+                </div>
+            </div>
+
             <form class="admin-card" method="post">
                 <input type="hidden" name="acao" value="salvar_config">
-                <span class="subtitulo">Dificuldade base</span><h2>Configurações do jogo</h2>
+                <?= campo_csrf() ?>
+                <span class="subtitulo">Ajustes</span><h2>Configurações do jogo</h2>
                 <div class="config-grid">
                     <?php foreach ($configs as $chave => $valor): ?>
                         <label><span><?= ucwords(str_replace('_', ' ', $chave)) ?></span><input type="number" step="0.01" name="<?= htmlspecialchars($chave) ?>" value="<?= htmlspecialchars((string) $valor) ?>"></label>
                     <?php endforeach; ?>
                 </div>
-                <button class="btn-link cheio" type="submit">Salvar dificuldade</button>
+                <button class="btn-link cheio" type="submit">Salvar ajustes</button>
             </form>
 
             <div class="admin-card">
@@ -227,7 +232,7 @@ try {
                 <span class="subtitulo">Conquistas</span><h2>Últimas conquistas</h2>
                 <div class="lista-admin">
                     <?php foreach ($conquistas as $c): ?><div><strong><?= htmlspecialchars($c['titulo']) ?></strong><span><?= htmlspecialchars($c['nome']) ?> • <?= htmlspecialchars($c['descricao']) ?></span></div><?php endforeach; ?>
-                    <?php if (!$conquistas): ?><p>Nenhuma conquista liberada ainda.</p><?php endif; ?>
+                    <?php if (!$conquistas): ?><p>Nenhuma conquista liberada ainda. O Márcio está economizando medalha.</p><?php endif; ?>
                 </div>
             </div>
 
@@ -235,12 +240,12 @@ try {
                 <span class="subtitulo">Missões</span><h2>Missões concluídas</h2>
                 <div class="lista-admin">
                     <?php foreach ($missoes as $m): ?><div><strong><?= htmlspecialchars($m['titulo']) ?></strong><span><?= htmlspecialchars($m['nome']) ?> • <?= data_br($m['criado_em']) ?></span></div><?php endforeach; ?>
-                    <?php if (!$missoes): ?><p>Nenhuma missão concluída ainda.</p><?php endif; ?>
+                    <?php if (!$missoes): ?><p>Nenhuma missão concluída ainda. Está todo mundo aquecendo.</p><?php endif; ?>
                 </div>
             </div>
         </section>
 
-        <form class="limpar-card" method="post" onsubmit="return confirm('Limpar ranking, histórico, conquistas e missões?')"><input type="hidden" name="acao" value="limpar_ranking"><button type="submit">Limpar ranking e histórico</button></form>
+        <form class="limpar-card" method="post" onsubmit="return confirm('Limpar ranking, histórico, conquistas e missões?')"><input type="hidden" name="acao" value="limpar_ranking"><?= campo_csrf() ?><button type="submit">Limpar ranking e histórico</button></form>
     </main>
 </body>
 </html>

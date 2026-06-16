@@ -1,18 +1,35 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/core.php';
+require_once __DIR__ . '/catalogo.php';
+require_once __DIR__ . '/repositorios.php';
+require_once __DIR__ . '/servicos.php';
+require_once __DIR__ . '/api_jogo.php';
 
 function resposta_json(array $dados, int $codigo = 200): void
 {
-    http_response_code($codigo);
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode($dados, JSON_UNESCAPED_UNICODE);
-    exit;
+    \App\Base\RespostaJson::enviar($dados, $codigo);
 }
 
 function limpar_texto(?string $valor): string
 {
-    $valor = trim((string) $valor);
-    return preg_replace('/\s+/', ' ', $valor) ?? '';
+    return \App\Base\Sanitizador::texto($valor);
+}
+
+
+function token_csrf(): string
+{
+    return \App\Base\Csrf::token();
+}
+
+function validar_csrf(?string $token): bool
+{
+    return \App\Base\Csrf::validar($token);
+}
+
+function campo_csrf(): string
+{
+    return \App\Base\Csrf::campo();
 }
 
 function nome_chave(string $nome): string
@@ -33,36 +50,7 @@ function pdo_sem_banco(): PDO
 
 function pdo(): PDO
 {
-    static $pdo = null;
-
-    if ($pdo instanceof PDO) {
-        return $pdo;
-    }
-
-    try {
-        $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET, DB_USER, DB_PASS, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false
-        ]);
-        preparar_banco($pdo);
-        return $pdo;
-    } catch (PDOException $erro) {
-        try {
-            $base = pdo_sem_banco();
-            $base->exec('CREATE DATABASE IF NOT EXISTS `' . DB_NAME . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-            $base = null;
-            $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET, DB_USER, DB_PASS, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES => false
-            ]);
-            preparar_banco($pdo);
-            return $pdo;
-        } catch (PDOException $novoErro) {
-            throw new RuntimeException('MySQL indisponível. Confira Apache e MySQL no XAMPP.');
-        }
-    }
+    return \App\Base\Conexao::pdo('preparar_banco');
 }
 
 function coluna_existe(PDO $pdo, string $tabela, string $coluna): bool
@@ -139,6 +127,34 @@ function preparar_banco(PDO $pdo): void
         FOREIGN KEY (jogador_id) REFERENCES jogadores(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+    $pdo->exec("CREATE TABLE IF NOT EXISTS administradores (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        usuario VARCHAR(40) NOT NULL UNIQUE,
+        senha_hash VARCHAR(255) NOT NULL,
+        criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS partidas_tokens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        jogador_id INT NOT NULL,
+        token CHAR(48) NOT NULL UNIQUE,
+        dificuldade VARCHAR(20) NOT NULL DEFAULT 'normal',
+        skin VARCHAR(30) NOT NULL DEFAULT 'classica',
+        criado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        usado_em DATETIME NULL,
+        INDEX idx_token_jogador (jogador_id, token),
+        INDEX idx_token_expiracao (criado_em, usado_em),
+        FOREIGN KEY (jogador_id) REFERENCES jogadores(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $stmtAdmin = $pdo->prepare('SELECT id FROM administradores WHERE usuario = ? LIMIT 1');
+    $stmtAdmin->execute([ADMIN_PADRAO_USUARIO]);
+    if (!$stmtAdmin->fetch()) {
+        $stmtAdmin = $pdo->prepare('INSERT INTO administradores (usuario, senha_hash) VALUES (?, ?)');
+        $stmtAdmin->execute([ADMIN_PADRAO_USUARIO, \App\Base\Auth::gerarSenha(ADMIN_PADRAO_SENHA)]);
+    }
+
     $pdo->exec("CREATE TABLE IF NOT EXISTS configuracoes (
         id INT AUTO_INCREMENT PRIMARY KEY,
         chave VARCHAR(60) NOT NULL UNIQUE,
@@ -155,12 +171,15 @@ function preparar_banco(PDO $pdo): void
     try { $pdo->exec('ALTER TABLE pontuacoes ADD INDEX jogador_fk_idx (jogador_id)'); } catch (Throwable $e) {}
     try { $pdo->exec('ALTER TABLE pontuacoes DROP INDEX jogador_id'); } catch (Throwable $e) {}
     try { $pdo->exec('ALTER TABLE pontuacoes ADD UNIQUE KEY jogador_dificuldade (jogador_id, dificuldade)'); } catch (Throwable $e) {}
+    try { $pdo->exec('CREATE INDEX idx_partidas_data ON partidas (criado_em)'); } catch (Throwable $e) {}
+    try { $pdo->exec('CREATE INDEX idx_partidas_dificuldade ON partidas (dificuldade)'); } catch (Throwable $e) {}
+    try { $pdo->exec('CREATE INDEX idx_pontuacoes_ranking ON pontuacoes (pontos, atualizado_em)'); } catch (Throwable $e) {}
 
     $configs = [
         ['velocidade_inicial', '3.85', 'Velocidade inicial dos canos'],
         ['aumento_fase', '0.34', 'Aumento de velocidade a cada fase'],
         ['velocidade_maxima', '6.40', 'Limite de velocidade'],
-        ['pontos_por_fase', '6', 'Pontos necessários para avançar de fase'],
+        ['pontos_por_fase', '6', 'Pontos para mudar de fase'],
         ['abertura_inicial', '218', 'Espaço inicial entre canos'],
         ['abertura_minima', '178', 'Menor espaço entre canos'],
         ['gravidade', '0.46', 'Força da gravidade'],
@@ -199,38 +218,28 @@ function configuracoes_jogo(): array
 
 function dificuldades_jogo(): array
 {
-    return [
-        'facil' => ['nome' => 'Fácil', 'vel' => 0.88, 'abertura' => 28, 'max' => -0.35, 'texto' => 'Mais espaço e ritmo tranquilo.'],
-        'normal' => ['nome' => 'Normal', 'vel' => 1.00, 'abertura' => 0, 'max' => 0, 'texto' => 'Equilibrado para disputa de ranking.'],
-        'dificil' => ['nome' => 'Difícil', 'vel' => 1.12, 'abertura' => -18, 'max' => 0.35, 'texto' => 'Mais rápido e com menos espaço.'],
-        'insano' => ['nome' => 'Insano', 'vel' => 1.23, 'abertura' => -30, 'max' => 0.65, 'texto' => 'Para quem quer sofrer bonito.']
-    ];
+    return \App\Jogo\CatalogoJogo::dificuldades();
 }
 
 function dificuldade_valida(string $dificuldade): string
 {
-    return array_key_exists($dificuldade, dificuldades_jogo()) ? $dificuldade : 'normal';
+    return \App\Jogo\CatalogoJogo::dificuldadeValida($dificuldade);
 }
 
 function skins_jogo(): array
 {
-    return [
-        'classica' => ['nome' => 'Clássica', 'texto' => 'Visual padrão', 'regra' => 'Liberada desde o início', 'pontos' => 0, 'fase' => 1, 'partidas' => 0],
-        'azul' => ['nome' => 'Azul', 'texto' => 'Rastro gelado', 'regra' => 'Faça 8 pontos', 'pontos' => 8, 'fase' => 1, 'partidas' => 0],
-        'dourada' => ['nome' => 'Dourada', 'texto' => 'Brilho campeão', 'regra' => 'Chegue na fase 4', 'pontos' => 0, 'fase' => 4, 'partidas' => 0],
-        'neon' => ['nome' => 'Neon', 'texto' => 'Efeito arcade', 'regra' => 'Jogue 8 partidas', 'pontos' => 0, 'fase' => 1, 'partidas' => 8]
-    ];
+    return \App\Jogo\CatalogoJogo::skins();
 }
 
 function skin_valida(string $skin): string
 {
-    return array_key_exists($skin, skins_jogo()) ? $skin : 'classica';
+    return \App\Jogo\CatalogoJogo::skinValida($skin);
 }
 
 
 function h(mixed $valor): string
 {
-    return htmlspecialchars((string) $valor, ENT_QUOTES, 'UTF-8');
+    return \App\Base\Sanitizador::html($valor);
 }
 
 function asset_v(string $caminho): string
@@ -242,72 +251,46 @@ function asset_v(string $caminho): string
 
 function nivel_jogador(int $xp): array
 {
-    $nivel = max(1, intdiv(max(0, $xp), 100) + 1);
-    $titulos = [1 => 'Iniciante', 2 => 'Treinando voo', 3 => 'Voador', 4 => 'Sobrevivente', 5 => 'Piloto', 7 => 'Mestre dos canos', 10 => 'Lenda'];
-    $titulo = 'Lenda';
-    foreach ($titulos as $min => $nome) {
-        if ($nivel >= $min) $titulo = $nome;
-    }
-    return [
-        'xp' => $xp,
-        'nivel' => $nivel,
-        'titulo' => $titulo,
-        'atual' => $xp % 100,
-        'proximo' => 100
-    ];
+    return \App\Jogo\Nivel::calcular($xp);
 }
 
 function missoes_do_dia(): array
 {
-    $dia = (int) date('z');
-    $opcoes = [
-        ['codigo' => 'dez_pontos', 'titulo' => 'Faça 10 pontos', 'descricao' => 'Marque pelo menos 10 pontos em uma partida.', 'tipo' => 'pontos', 'meta' => 10],
-        ['codigo' => 'fase_tres', 'titulo' => 'Chegue na fase 3', 'descricao' => 'Alcance a terceira fase.', 'tipo' => 'fase', 'meta' => 3],
-        ['codigo' => 'trinta_segundos', 'titulo' => 'Sobreviva 30s', 'descricao' => 'Fique pelo menos 30 segundos voando.', 'tipo' => 'tempo', 'meta' => 30],
-        ['codigo' => 'modo_dificil', 'titulo' => 'Jogue no difícil', 'descricao' => 'Faça uma partida na dificuldade difícil ou insano.', 'tipo' => 'dificuldade', 'meta' => 'dificil'],
-        ['codigo' => 'quinze_pontos', 'titulo' => 'Faça 15 pontos', 'descricao' => 'Marque pelo menos 15 pontos.', 'tipo' => 'pontos', 'meta' => 15]
-    ];
-
-    return [$opcoes[$dia % count($opcoes)], $opcoes[($dia + 2) % count($opcoes)]];
+    return \App\Jogo\CatalogoJogo::missoesDoDia();
 }
 
 function estatisticas_gerais(): array
 {
     try {
-        $pdo = pdo();
-        $resumo = $pdo->query('SELECT COUNT(*) total, COALESCE(AVG(pontos), 0) media, COALESCE(MAX(pontos), 0) maior, COALESCE(MAX(fase), 1) fase FROM partidas')->fetch();
-        $jogadores = $pdo->query('SELECT COUNT(*) total FROM jogadores')->fetch();
-        $campeao = $pdo->query('SELECT j.nome, p.pontos FROM pontuacoes p JOIN jogadores j ON j.id = p.jogador_id ORDER BY p.pontos DESC, p.atualizado_em ASC LIMIT 1')->fetch();
-        $dif = $pdo->query('SELECT dificuldade, COUNT(*) total FROM partidas GROUP BY dificuldade ORDER BY total DESC LIMIT 1')->fetch();
-
-        return [
-            'partidas' => (int) ($resumo['total'] ?? 0),
-            'jogadores' => (int) ($jogadores['total'] ?? 0),
-            'media' => round((float) ($resumo['media'] ?? 0), 1),
-            'maior' => (int) ($resumo['maior'] ?? 0),
-            'fase' => (int) ($resumo['fase'] ?? 1),
-            'campeao' => $campeao['nome'] ?? 'Aguardando',
-            'pontos_campeao' => (int) ($campeao['pontos'] ?? 0),
-            'dificuldade' => $dif['dificuldade'] ?? 'normal'
-        ];
+        return (new \App\Regras\Metricas(pdo()))->gerais();
     } catch (Throwable $erro) {
-        return ['partidas' => 0, 'jogadores' => 0, 'media' => 0, 'maior' => 0, 'fase' => 1, 'campeao' => 'MySQL offline', 'pontos_campeao' => 0, 'dificuldade' => 'normal'];
+        return ['partidas' => 0, 'jogadores' => 0, 'media' => 0, 'maior' => 0, 'fase' => 1, 'campeao' => 'MySQL offline', 'pontos_campeao' => 0, 'dificuldade' => 'normal', 'partidas_hoje' => 0, 'maior_hoje' => 0, 'jogadores_ativos' => 0, 'mais_ativo' => 'Aguardando', 'tempo_medio' => 0];
     }
+}
+
+
+function texto_jogador(string $texto, int $maximo = 50): string
+{
+    $texto = limpar_texto($texto);
+    if (mb_strlen($texto, 'UTF-8') > $maximo) {
+        $texto = mb_substr($texto, 0, $maximo, 'UTF-8');
+    }
+    return $texto;
 }
 
 function usuario_limpo(string $usuario): string
 {
-    $usuario = mb_strtolower(limpar_texto($usuario), 'UTF-8');
-    return preg_replace('/[^a-z0-9_.-]/', '', $usuario) ?? '';
+    return \App\Base\Sanitizador::usuario($usuario);
 }
 
 function validar_usuario_senha(string $usuario, string $senha): ?string
 {
-    if (mb_strlen($usuario, 'UTF-8') < 3) return 'O usuário precisa ter pelo menos 3 caracteres.';
-    if (mb_strlen($usuario, 'UTF-8') > 24) return 'O usuário pode ter no máximo 24 caracteres.';
-    if (!preg_match('/^[a-z0-9_.-]+$/', $usuario)) return 'Use apenas letras, números, ponto, hífen ou underline.';
-    if (strlen($senha) < 4) return 'A senha precisa ter pelo menos 4 caracteres.';
-    return null;
+    try {
+        \App\Base\Validador::usuarioSenha($usuario, $senha);
+        return null;
+    } catch (InvalidArgumentException $erro) {
+        return $erro->getMessage();
+    }
 }
 
 function criar_jogador_com_senha(string $usuario, string $senha): array
@@ -322,7 +305,7 @@ function criar_jogador_com_senha(string $usuario, string $senha): array
     if ($stmt->fetch()) throw new InvalidArgumentException('Esse usuário já existe.');
 
     $stmt = $pdo->prepare('INSERT INTO jogadores (nome, nome_chave, senha_hash) VALUES (?, ?, ?)');
-    $stmt->execute([$usuario, $usuario, password_hash($senha, PASSWORD_DEFAULT)]);
+    $stmt->execute([$usuario, $usuario, \App\Base\Auth::gerarSenha($senha)]);
     return buscar_jogador_por_id((int) $pdo->lastInsertId());
 }
 
@@ -333,7 +316,7 @@ function login_jogador(string $usuario, string $senha): array
     $stmt = $pdo->prepare('SELECT * FROM jogadores WHERE nome_chave = ? LIMIT 1');
     $stmt->execute([$usuario]);
     $jogador = $stmt->fetch();
-    if (!$jogador || empty($jogador['senha_hash']) || !password_verify($senha, $jogador['senha_hash'])) {
+    if (!$jogador || !\App\Base\Auth::conferirSenha($senha, $jogador['senha_hash'] ?? null)) {
         throw new InvalidArgumentException('Usuário ou senha inválidos.');
     }
     return $jogador;
@@ -354,20 +337,6 @@ function jogador_sessao(): ?array
     $id = (int) ($_SESSION['jogador_id'] ?? 0);
     if (!$id) return null;
     try { return buscar_jogador_por_id($id); } catch (Throwable $e) { unset($_SESSION['jogador_id']); return null; }
-}
-
-function buscar_ou_criar_jogador(string $nome): array
-{
-    $nome = usuario_limpo($nome);
-    if (mb_strlen($nome, 'UTF-8') < 3) throw new InvalidArgumentException('Informe um usuário válido.');
-    $pdo = pdo();
-    $stmt = $pdo->prepare('SELECT * FROM jogadores WHERE nome_chave = ? LIMIT 1');
-    $stmt->execute([$nome]);
-    $jogador = $stmt->fetch();
-    if ($jogador) return $jogador;
-    $stmt = $pdo->prepare('INSERT INTO jogadores (nome, nome_chave) VALUES (?, ?)');
-    $stmt->execute([$nome, $nome]);
-    return buscar_jogador_por_id((int) $pdo->lastInsertId());
 }
 
 function posicao_jogador(int $jogadorId, string $dificuldade = 'geral'): ?int
@@ -392,35 +361,23 @@ function posicao_jogador(int $jogadorId, string $dificuldade = 'geral'): ?int
 
 function conquistas_catalogo(): array
 {
-    return [
-        ['codigo' => 'primeiro_voo', 'titulo' => 'Primeiro voo', 'descricao' => 'Jogou a primeira partida'],
-        ['codigo' => 'fase_3', 'titulo' => 'Pegou ritmo', 'descricao' => 'Chegou na fase 3'],
-        ['codigo' => 'fase_5', 'titulo' => 'Piloto avançado', 'descricao' => 'Chegou na fase 5'],
-        ['codigo' => 'dez_pontos', 'titulo' => 'Dezena feita', 'descricao' => 'Fez pelo menos 10 pontos'],
-        ['codigo' => 'vinte_pontos', 'titulo' => 'Lenda dos canos', 'descricao' => 'Fez pelo menos 20 pontos'],
-        ['codigo' => 'um_minuto', 'titulo' => 'Fôlego de sobra', 'descricao' => 'Sobreviveu por 60 segundos'],
-        ['codigo' => 'modo_insano', 'titulo' => 'Coragem pura', 'descricao' => 'Jogou no modo insano'],
-        ['codigo' => 'podio', 'titulo' => 'Entrou no pódio', 'descricao' => 'Ficou entre os três melhores'],
-        ['codigo' => 'skin_azul', 'titulo' => 'Skin Azul liberada', 'descricao' => 'Fez 8 pontos e liberou uma nova skin'],
-        ['codigo' => 'skin_dourada', 'titulo' => 'Skin Dourada liberada', 'descricao' => 'Chegou na fase 4'],
-        ['codigo' => 'skin_neon', 'titulo' => 'Skin Neon liberada', 'descricao' => 'Jogou partidas suficientes para liberar o visual neon']
-    ];
+    return \App\Jogo\CatalogoJogo::conquistas();
 }
 
 function liberar_conquistas(int $jogadorId, int $pontos, int $fase, float $duracao, string $dificuldade, ?int $posicao): array
 {
     $lista = [
-        ['primeiro_voo', 'Primeiro voo', 'Jogou a primeira partida', true],
-        ['fase_3', 'Pegou ritmo', 'Chegou na fase 3', $fase >= 3],
-        ['fase_5', 'Piloto avançado', 'Chegou na fase 5', $fase >= 5],
-        ['dez_pontos', 'Dezena feita', 'Fez pelo menos 10 pontos', $pontos >= 10],
-        ['vinte_pontos', 'Lenda dos canos', 'Fez pelo menos 20 pontos', $pontos >= 20],
-        ['um_minuto', 'Fôlego de sobra', 'Sobreviveu por 60 segundos', $duracao >= 60],
-        ['modo_insano', 'Coragem pura', 'Jogou no modo insano', $dificuldade === 'insano'],
-        ['podio', 'Entrou no pódio', 'Ficou entre os três melhores', $posicao !== null && $posicao <= 3],
-        ['skin_azul', 'Skin Azul liberada', 'Fez 8 pontos e liberou uma nova skin', $pontos >= 8],
-        ['skin_dourada', 'Skin Dourada liberada', 'Chegou na fase 4', $fase >= 4],
-        ['skin_neon', 'Skin Neon liberada', 'Jogou partidas suficientes para liberar o visual neon', perfil_jogador($jogadorId)['partidas'] >= 8]
+        ['primeiro_voo', 'Primeira voada', 'Começou a jogar e salvou a primeira partida.', true],
+        ['fase_3', 'Pegou o jeito', 'Chegou até a fase 3.', $fase >= 3],
+        ['fase_5', 'Foi longe', 'Chegou até a fase 5.', $fase >= 5],
+        ['dez_pontos', 'Dez já dá jogo', 'Fez pelo menos 10 pontos.', $pontos >= 10],
+        ['vinte_pontos', 'Passou raspando', 'Fez pelo menos 20 pontos.', $pontos >= 20],
+        ['um_minuto', 'Segurou bem', 'Ficou 60 segundos sem cair.', $duracao >= 60],
+        ['modo_insano', 'Sem medo do insano', 'Jogou uma partida no modo insano.', $dificuldade === 'insano'],
+        ['podio', 'Entrou no pódio', 'Ficou entre os três melhores do ranking.', $posicao !== null && $posicao <= 3],
+        ['skin_azul', 'Azul desbloqueada', 'Fez 8 pontos e liberou uma skin nova.', $pontos >= 8],
+        ['skin_dourada', 'Dourada na conta', 'Chegou na fase 4 e liberou a dourada.', $fase >= 4],
+        ['skin_neon', 'Neon liberado', 'Jogou 8 partidas e liberou o neon.', perfil_jogador($jogadorId)['partidas'] >= 8]
     ];
 
     $novas = [];
@@ -514,6 +471,21 @@ function ranking_por_dificuldade(): array
     $stmt = pdo()->query('SELECT dificuldade, COUNT(*) partidas, COALESCE(MAX(pontos),0) maior, COALESCE(AVG(pontos),0) media FROM partidas GROUP BY dificuldade ORDER BY partidas DESC');
     return $stmt->fetchAll();
 }
+
+
+function login_admin(string $usuario, string $senha): bool
+{
+    $usuario = usuario_limpo($usuario);
+    $stmt = pdo()->prepare('SELECT senha_hash FROM administradores WHERE usuario = ? LIMIT 1');
+    $stmt->execute([$usuario]);
+    $admin = $stmt->fetch();
+
+    return $admin && \App\Base\Auth::conferirSenha($senha, $admin['senha_hash'] ?? null);
+}
+
+require_once __DIR__ . '/classes/Jogador.php';
+require_once __DIR__ . '/classes/Ranking.php';
+require_once __DIR__ . '/classes/PainelAdmin.php';
 
 function data_br(?string $data): string
 {

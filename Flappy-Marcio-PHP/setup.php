@@ -24,13 +24,13 @@ try {
         <span class="tag">Configuração</span>
         <h1>Flappy Márcio</h1>
         <?php if ($ok): ?>
-            <p>Banco de dados preparado com sucesso. Agora é só abrir o jogo.</p>
+            <p>Banco pronto. Abra o jogo e, se precisar, acesse o painel com admin / 1234.</p>
             <a class="link-setup" href="index.php">Abrir jogo</a>
             <a class="link-setup secundario" href="admin.php">Abrir painel</a>
         <?php else: ?>
-            <p>Não foi possível preparar o banco de dados.</p>
+            <p>Não consegui preparar o banco de dados.</p>
             <pre><?= htmlspecialchars($erro) ?></pre>
-            <p>Verifique se o MySQL do XAMPP está ativo e confira usuário/senha em <strong>php/config.php</strong>.</p>
+            <p>Veja se o MySQL do XAMPP está ligado e confira os dados em <strong>config/database.php</strong>.</p>
         <?php endif; ?>
     </main>
 </body>

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/php/funcoes.php';
+\App\Base\Cabecalhos::segurancaBasica();
 $configJogo = configuracoes_jogo();
 $stats = estatisticas_gerais();
 $dificuldades = dificuldades_jogo();
@@ -12,7 +13,7 @@ $conquistasCatalogo = conquistas_catalogo();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flappy Márcio 2</title>
+    <title>Flappy Márcio</title>
     <link rel="stylesheet" href="<?= asset_v('assets/css/estilo.css') ?>">
 </head>
 <body>
@@ -32,8 +33,8 @@ $conquistasCatalogo = conquistas_catalogo();
     <main class="pagina">
         <nav class="menu-principal">
             <div>
-                <strong>Flappy Márcio 2</strong>
-                <span>Jogo, ranking e desafios</span>
+                <strong>Flappy Márcio</strong>
+                <span>Jogo e ranking</span>
             </div>
             <button type="button" data-ir="jogo">Jogar</button>
             <button type="button" data-ir="ranking">Ranking</button>
@@ -47,9 +48,9 @@ $conquistasCatalogo = conquistas_catalogo();
             <header class="topo-jogo">
                 <div class="logo">FM</div>
                 <div>
-                    <span class="tag">Desafio dos Canos</span>
-                    <h1>Flappy Márcio 2</h1>
-                    <p>Escolha o modo, domine os canos, desbloqueie visuais e tente ficar no topo do ranking.</p>
+                    <span class="tag">Só mais uma, vai...</span>
+                    <h1>Flappy Márcio</h1>
+                    <p>Escolha o modo, aqueça o dedo no espaço e tente passar o seu recorde sem culpar o teclado.</p>
                 </div>
             </header>
 
@@ -57,7 +58,7 @@ $conquistasCatalogo = conquistas_catalogo();
                 <div class="titulo-card titulo-card-acesso">
                     <div>
                         <span class="subtitulo">Jogador</span>
-                        <h2>Perfil da partida</h2>
+                        <h2>Seu jogador</h2>
                     </div>
                     <div class="acoes-perfil">
                         <span class="status" id="statusJogador">Visitante</span>
@@ -67,12 +68,12 @@ $conquistasCatalogo = conquistas_catalogo();
 
                 <div class="perfil-minimo" id="perfilMinimo">
                     <strong id="perfilMinimoNome">Visitante</strong>
-                    <span>Login recolhido para dar mais destaque ao jogo.</span>
+                    <span>Login recolhido para sobrar mais espaço para o Márcio sofrer nos canos.</span>
                 </div>
 
                 <div class="abas-acesso" id="abasAcesso">
                     <button class="ativo" type="button" data-aba="login">Entrar</button>
-                    <button type="button" data-aba="cadastro">Criar conta</button>
+                    <button type="button" data-aba="cadastro">Novo jogador</button>
                 </div>
 
                 <form class="form-jogador" id="formLoginJogador">
@@ -93,8 +94,8 @@ $conquistasCatalogo = conquistas_catalogo();
                     <button class="btn-acesso" type="submit">Cadastrar</button>
                 </form>
 
-                <button class="btn-sair-jogador escondido" id="btnSairJogador" type="button">Sair do jogador</button>
-                <p id="mensagemNome" class="mensagem">Entre ou crie uma conta para salvar ranking, XP e conquistas.</p>
+                <button class="btn-sair-jogador escondido" id="btnSairJogador" type="button">Sair</button>
+                <p id="mensagemNome" class="mensagem">Entre para salvar seu recorde. Jogar sem login é treino, mas treino também derruba.</p>
 
                 <div class="perfil-grid" id="perfilJogador">
                     <div><span>Recorde</span><strong id="recordeJogador">0</strong></div>
@@ -115,7 +116,7 @@ $conquistasCatalogo = conquistas_catalogo();
             <section class="card dificuldade-card">
                 <div class="titulo-card">
                     <div>
-                        <span class="subtitulo">Modo de jogo</span>
+                        <span class="subtitulo">Partida</span>
                         <h2>Dificuldade</h2>
                     </div>
                     <span class="status" id="dificuldadeAtual">Normal</span>
@@ -155,7 +156,7 @@ $conquistasCatalogo = conquistas_catalogo();
                 <div class="titulo-card">
                     <div>
                         <span class="subtitulo">Objetivos</span>
-                        <h2>Missões do dia</h2>
+                        <h2>Desafios do dia</h2>
                     </div>
                     <span class="status">Hoje</span>
                 </div>
@@ -188,12 +189,12 @@ $conquistasCatalogo = conquistas_catalogo();
             </section>
 
             <section class="card manual-card fechado" id="manualCard">
-                <button class="btn-manual" id="btnManual" type="button"><span>Manual do jogo</span><strong id="manualIcone">+</strong></button>
+                <button class="btn-manual" id="btnManual" type="button"><span>Como jogar</span><strong id="manualIcone">+</strong></button>
                 <div class="conteudo-manual" id="conteudoManual">
-                    <div><strong>Espaço</strong><span>Inicia, pula e reinicia após o fim da partida.</span></div>
-                    <div><strong>P</strong><span>Pausa ou continua a partida.</span></div>
-                    <div><strong>Escudo</strong><span>Protege de uma batida quando estiver ativo.</span></div>
-                    <div><strong>Foco</strong><span>Reduz a velocidade por alguns segundos.</span></div>
+                    <div><strong>Espaço</strong><span>Começa, pula e reinicia depois da queda dramática.</span></div>
+                    <div><strong>P</strong><span>Pausa e continua o jogo.</span></div>
+                    <div><strong>Escudo</strong><span>Salva uma batida. Não faz milagre, mas ajuda.</span></div>
+                    <div><strong>Foco</strong><span>Dá uma segurada na velocidade por alguns segundos.</span></div>
                 </div>
             </section>
 
@@ -201,11 +202,11 @@ $conquistasCatalogo = conquistas_catalogo();
                 <div class="titulo-card">
                     <div>
                         <span class="subtitulo">Equipe</span>
-                        <h2>Desenvolvedores</h2>
+                        <h2>Feito por</h2>
                     </div>
                 </div>
                 <div class="devs"><span>Eric</span><span>Vinicius</span><span>Jhonatan</span></div>
-                <p>Jogo desenvolvido com páginas, ranking, perfil, missões e painel administrativo.</p>
+                <p>Projeto feito com jogo, conta de jogador, ranking, desafios, filtros e painel de controle. A ideia foi deixar simples de jogar, mas com sistema por trás.</p>
             </section>
         </section>
 
@@ -215,7 +216,7 @@ $conquistasCatalogo = conquistas_catalogo();
                 <div><span>Dificuldade</span><strong id="hudDificuldade">Normal</strong></div>
                 <div><span>Fase</span><strong id="faseAtual">1</strong></div>
                 <div><span>Velocidade</span><strong id="velocidadeHud">1.0x</strong></div>
-                <button id="btnApresentacao" class="btn-secundario" type="button">Modo apresentação</button>
+                <button id="btnApresentacao" class="btn-secundario" type="button">Apresentar</button>
                 <button id="btnTelaCheia" class="btn-secundario btn-full" type="button">⛶ Tela cheia</button>
             </div>
 
@@ -248,12 +249,12 @@ $conquistasCatalogo = conquistas_catalogo();
                 <div class="card resumo-card">
                     <div class="titulo-card">
                         <div>
-                            <span class="subtitulo">Pós-partida</span>
+                            <span class="subtitulo">Depois da partida</span>
                             <h2>Resumo</h2>
                         </div>
                     </div>
                     <div class="resumo-final" id="resumoFinal">
-                        <span>Jogue uma partida para ver pontos, fase, tempo, velocidade e missões concluídas.</span>
+                        <span>Depois da partida aparece o resumo: pontos, fase, tempo e aquele sentimento de “dava para ir mais longe”.</span>
                     </div>
                     <div class="conquistas-lista" id="conquistasJogador"></div>
                 </div>
@@ -270,7 +271,7 @@ $conquistasCatalogo = conquistas_catalogo();
         </section>
     </main>
 
-    <a href="admin.php" class="atalho-admin">Painel admin</a>
+    <a href="admin.php" class="atalho-admin">Admin</a>
 
     <script>
         window.CONFIG_JOGO = <?= json_encode($configJogo, JSON_UNESCAPED_UNICODE) ?>;
